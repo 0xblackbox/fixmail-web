@@ -5,6 +5,6 @@ export async function POST() {
   const email = `${genId(10)}@${DOMAIN}`;
   const token = genId(20, true);
   const share: ShareData = { email, status: 'active', createdAt: new Date().toISOString() };
-  await redis.set(`share:${token}`, JSON.stringify(share), { ex: SHARE_TTL });
+  await redis.set(`share:${token}`, share, { ex: SHARE_TTL });
   return NextResponse.json({ token, email, shareUrl: `/share/${token}` });
 }
