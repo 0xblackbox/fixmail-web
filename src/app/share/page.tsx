@@ -113,7 +113,7 @@ function ShareSection({ onToast }: { onToast: (msg: string) => void }) {
   const expiryLabel: Record<string, string> = { '10m': '10 分钟', '1h': '1 小时', '24h': '24 小时', '7d': '7 天' };
 
   return (
-    <div className="share-section" style={{ gridTemplateColumns: '340px 1fr' }}>
+    <div className="share-section">
       <div className="share-head">
         <span className="share-tag">{Ic.link} 一次性链接</span>
         <h3>生成可分享的临时链接</h3>

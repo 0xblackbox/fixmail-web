@@ -689,7 +689,33 @@ body[data-density="comfy"] .mail-item{padding:14px 16px;}
   .nav-links{display:none;}
   .address-wrap{padding:16px 16px 12px;}
   .mail-wrap{padding:8px 16px calc(16px + 60px + env(safe-area-inset-bottom));}
-  .panel-view{padding-bottom:calc(16px + 60px + env(safe-area-inset-bottom));}
+  .panel-view{padding:16px;padding-bottom:calc(16px + 60px + env(safe-area-inset-bottom));}
   .mobile-tab-bar{display:block;}
+
+  /* Share page */
+  .share-section{grid-template-columns:1fr;padding:16px;}
+  .share-controls-4{grid-template-columns:repeat(2,1fr);}
+  .share-head{margin-bottom:4px;}
+  .share-result{flex-wrap:wrap;gap:8px;}
+  .share-meta{gap:6px 12px;}
+
+  /* History page */
+  .history-head{display:none;}
+  .history-row{
+    grid-template-columns:1fr auto;
+    gap:6px;
+    padding:12px 4px;
+  }
+  /* hide 创建时间 and 邮件数 columns on mobile */
+  .history-row > span:nth-child(2),
+  .history-row > span:nth-child(3),
+  .history-row > span:nth-child(5){display:none;}
+
+  /* Panel head stack on mobile */
+  .panel-head{flex-direction:column;align-items:flex-start;gap:10px;}
+
+  /* Batch list simplified */
+  .batch-item{grid-template-columns:24px 1fr 32px 32px !important;}
+  .batch-item > span:nth-child(3){display:none;}
 }
 body[data-theme="dark"] .mobile-tab-bar{background:rgba(14,14,16,.92);}
