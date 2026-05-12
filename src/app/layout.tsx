@@ -1,10 +1,15 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import LockProvider from '@/components/LockProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: 'FixMail - 免费临时邮箱',
   description: '免费一次性临时邮箱，保护你的隐私',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
