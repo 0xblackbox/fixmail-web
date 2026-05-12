@@ -3,6 +3,66 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 
+// ─── Password Prompt ────────────────────────────────────────────────────────
+function PinPrompt({ title = '链接受密码保护', subtitle = '请输入访问密码查看邮件', onSubmit }: {
+  title?: string; subtitle?: string;
+  onSubmit: (pin: string) => Promise<boolean>;
+}) {
+  const [v, setV]       = useState('');
+  const [show, setShow] = useState(false);
+  const [err, setErr]   = useState('');
+  const [busy, setBusy] = useState(false);
+  const ref             = useRef<HTMLInputElement>(null);
+  useEffect(() => { setTimeout(() => ref.current?.focus(), 80); }, []);
+
+  const submit = async () => {
+    if (!v || busy) return;
+    setBusy(true);
+    const ok = await onSubmit(v);
+    if (!ok) {
+      setErr('密码错误，请重试'); setV(''); setBusy(false);
+      setTimeout(() => setErr(''), 1500);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#f9f9f8] flex items-center justify-center px-6">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 w-full max-w-sm flex flex-col gap-5">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97757" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1"/>
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-gray-800">{title}</h2>
+            <p className="text-xs text-gray-400 mt-1">{subtitle}</p>
+          </div>
+        </div>
+        <div className={`flex items-center border rounded-xl overflow-hidden ${err ? 'border-red-400' : 'border-gray-200'}`}
+          style={err ? { animation: 'shake .35s' } : {}}>
+          <input ref={ref} type={show ? 'text' : 'password'} value={v}
+            onChange={e => setV(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && v && !busy) submit(); }}
+            placeholder="访问密码" disabled={busy}
+            className="flex-1 px-4 py-3 text-sm bg-transparent outline-none text-gray-800 placeholder-gray-300" />
+          <button onClick={() => setShow(s => !s)} type="button"
+            className="px-3 text-gray-400 hover:text-gray-600 transition-colors">
+            {show ? '隐' : '显'}
+          </button>
+        </div>
+        {err && <p className="text-xs text-red-500 text-center -mt-2">{err}</p>}
+        <button onClick={submit} disabled={!v || busy}
+          className="w-full py-3 rounded-xl text-sm font-medium text-white transition-all"
+          style={{ background: !v || busy ? '#e5e5e5' : '#d97757', color: !v || busy ? '#999' : 'white' }}>
+          {busy ? '验证中…' : '进入'}
+        </button>
+      </div>
+      <style>{`@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}`}</style>
+    </div>
+  );
+}
+
 interface ShareInfo {
   email: string;
   status: 'active' | 'consumed';
@@ -48,11 +108,18 @@ export default function SharePage() {
   const [pageStatus, setPageStatus] = useState<PageStatus>('loading');
   const [copied, setCopied]         = useState(false);
   const [ttl, setTtl]               = useState(0);
+  // sharePassword: verified password for this share link (in memory, not cookie)
+  const [sharePassword, setSharePassword] = useState('');
+  const [needSharePw, setNeedSharePw]     = useState(false);
+  const sharePasswordRef = useRef('');
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const stopPolling = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   };
+
+  const shareHeaders = (): Record<string, string> =>
+    sharePasswordRef.current ? { 'x-share-password': sharePasswordRef.current } : {};
 
   useEffect(() => {
     fetch(`/api/share/${token}`)
@@ -70,12 +137,17 @@ export default function SharePage() {
   }, [token]);
 
   const pollInbox = useCallback(async () => {
-    const res = await fetch(`/api/share/${token}/inbox`);
+    const res = await fetch(`/api/share/${token}/inbox`, { headers: shareHeaders() });
+    if (res.status === 401) {
+      const d = await res.json().catch(() => ({}));
+      if (d.shareLocked) { setNeedSharePw(true); stopPolling(); }
+      return;
+    }
     if (res.status === 404) { setPageStatus('expired'); stopPolling(); return; }
     if (res.status === 410) { setPageStatus('consumed'); stopPolling(); return; }
     const data = await res.json();
     setMessages(data.messages || []);
-  }, [token]);
+  }, [token]); // eslint-disable-line
 
   useEffect(() => {
     if (pageStatus !== 'active') { stopPolling(); return; }
@@ -85,20 +157,57 @@ export default function SharePage() {
   }, [pageStatus, pollInbox]);
 
   useEffect(() => {
-    if (pageStatus !== 'active' || ttl <= 0) return;
-    const t = setInterval(() => setTtl(prev => Math.max(0, prev - 1)), 1000);
+    if (pageStatus !== 'active' || ttl <= 0) {
+      // Stop countdown when consumed/expired
+      return;
+    }
+    const t = setInterval(() => setTtl(prev => {
+      if (prev <= 1) { clearInterval(t); return 0; }
+      return prev - 1;
+    }), 1000);
     return () => clearInterval(t);
-  }, [pageStatus, ttl]);
+  }, [pageStatus]); // intentionally omit ttl — only restart when pageStatus changes
 
   const handleView = async (id: string) => {
-    const res = await fetch(`/api/share/${token}/message/${id}`);
-    if (res.status === 410) { setPageStatus('consumed'); return; }
+    const res = await fetch(`/api/share/${token}/message/${id}`, { headers: shareHeaders() });
+    if (res.status === 401) {
+      const d = await res.json().catch(() => ({}));
+      if (d.shareLocked) setNeedSharePw(true);
+      return;
+    }
+    if (res.status === 410) { setPageStatus('consumed'); stopPolling(); return; }
     if (!res.ok) return;
     const data = await res.json();
     setSelected(data);
-    setPageStatus('consumed');
-    stopPolling();
+    // 不在这里设 consumed——服务端达到 maxOpens 后，下次 inbox 轮询会返回 410 自动触发
   };
+
+  // Verify share link password
+  const handleSharePwSubmit = async (entered: string): Promise<boolean> => {
+    const res = await fetch(`/api/share/${token}/inbox`, {
+      headers: { 'x-share-password': entered },
+    });
+    if (res.ok) {
+      sharePasswordRef.current = entered;
+      setSharePassword(entered);
+      setNeedSharePw(false);
+      const data = await res.json();
+      setMessages(data.messages || []);
+      // Clear any existing interval before creating a new one (prevent duplicate)
+      stopPolling();
+      pollRef.current = setInterval(pollInbox, 5000);
+      return true;
+    }
+    return false;
+  };
+
+  if (needSharePw) return (
+    <PinPrompt
+      title="链接受密码保护"
+      subtitle="请输入链接访问密码"
+      onSubmit={handleSharePwSubmit}
+    />
+  );
 
   const handleCopy = () => {
     if (!shareInfo?.email) return;
@@ -199,7 +308,9 @@ export default function SharePage() {
               <div className="px-5 py-4 border-b border-gray-100 bg-green-50/60">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full" />
-                  <p className="text-green-600 text-xs font-medium">验证码已收到 · 链接已自动关闭</p>
+                  <p className="text-green-600 text-xs font-medium">
+                    {pageStatus === 'consumed' ? '验证码已收到 · 链接已自动关闭' : '验证码已收到'}
+                  </p>
                 </div>
                 <h3 className="font-semibold text-gray-800 text-sm">{selected.subject}</h3>
                 <p className="text-xs text-gray-500 mt-0.5">来自：{selected.from}</p>
