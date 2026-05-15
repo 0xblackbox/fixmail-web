@@ -344,12 +344,34 @@ function SavedLinksPanel({ links, onExpire, onClear, onToast }: {
   const now = Date.now();
   const active = links.filter(l => !l.expired && l.expiresAt > now);
   const inactive = links.filter(l => l.expired || l.expiresAt <= now);
-
-  if (links.length === 0) return null;
+  const [pasteInput, setPasteInput] = useState('');
+  const [pasteLoading, setPasteLoading] = useState(false);
 
   const copy = (url: string) => {
     navigator.clipboard?.writeText(url).catch(() => {});
     onToast('链接已复制');
+  };
+
+  // Extract token from a share URL like https://fixmail.org/share/xxxxx
+  const extractToken = (val: string) => {
+    const m = val.trim().match(/\/share\/([a-zA-Z0-9_-]+)/);
+    return m ? m[1] : val.trim().replace(/^share:?\/?\/?/, '') || null;
+  };
+
+  const handlePasteExpire = async () => {
+    const token = extractToken(pasteInput);
+    if (!token) { onToast('请粘贴有效的分享链接'); return; }
+    setPasteLoading(true);
+    const res = await fetch(`/api/share/${token}`, { method: 'DELETE' }).catch(() => null);
+    setPasteLoading(false);
+    if (res && res.ok) {
+      onToast('链接已失效');
+      setPasteInput('');
+      // mark in saved list if present
+      onExpire(token);
+    } else {
+      onToast('链接不存在或已失效');
+    }
   };
 
   const renderRow = (l: SavedLink, autoExpired: boolean) => {
@@ -369,10 +391,8 @@ function SavedLinksPanel({ links, onExpire, onClear, onToast }: {
             <>
               <button className="btn btn-sm" onClick={() => copy(l.url)}>{Ic.copy}<span>复制链接</span></button>
               <button
-                className="btn btn-sm"
-                style={{ color:'var(--danger,#e5534b)' }}
+                className="btn btn-sm" style={{ color:'var(--danger,#e5534b)' }}
                 onClick={() => onExpire(l.token)}
-                title="立即失效"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
@@ -390,21 +410,52 @@ function SavedLinksPanel({ links, onExpire, onClear, onToast }: {
     <div className="saved-links-panel">
       <div className="saved-links-head">
         <span style={{ fontWeight:600, fontSize:14 }}>我的分享链接</span>
-        <span style={{ fontSize:12, color:'var(--muted)' }}>
-          {active.length} 个有效 · {inactive.length} 个已失效
-        </span>
-        <button className="btn btn-ghost btn-sm" style={{ marginLeft:'auto' }} onClick={onClear}>
-          {Ic.trash}<span>清空记录</span>
+        {links.length > 0 && (
+          <span style={{ fontSize:12, color:'var(--muted)' }}>
+            {active.length} 个有效 · {inactive.length} 个已失效
+          </span>
+        )}
+        {links.length > 0 && (
+          <button className="btn btn-ghost btn-sm" style={{ marginLeft:'auto' }} onClick={onClear}>
+            {Ic.trash}<span>清空记录</span>
+          </button>
+        )}
+      </div>
+
+      {/* 粘贴链接失效 */}
+      <div className="paste-expire-row">
+        <input
+          type="text"
+          className="paste-expire-input"
+          value={pasteInput}
+          onChange={e => setPasteInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handlePasteExpire()}
+          placeholder="粘贴分享链接，立即让它失效…"
+        />
+        <button
+          className="btn btn-sm"
+          style={{ color:'var(--danger,#e5534b)', flexShrink:0 }}
+          onClick={handlePasteExpire}
+          disabled={!pasteInput.trim() || pasteLoading}
+        >
+          {pasteLoading ? '处理中…' : '立即失效'}
         </button>
       </div>
+
+      {links.length === 0 && (
+        <div style={{ padding:'16px 18px', fontSize:13, color:'var(--muted)' }}>
+          生成的链接会显示在这里，可随时复制或手动失效。
+        </div>
+      )}
+
       {active.length > 0 && (
         <div className="saved-links-group">
           {active.map(l => renderRow(l, false))}
         </div>
       )}
       {inactive.length > 0 && (
-        <div className="saved-links-group" style={{ marginTop: active.length ? 8 : 0 }}>
-          <div style={{ fontSize:11, color:'var(--muted)', padding:'4px 0 6px', letterSpacing:'.04em', textTransform:'uppercase', fontWeight:600 }}>已失效</div>
+        <div className="saved-links-group" style={{ marginTop: active.length ? 4 : 0 }}>
+          <div style={{ fontSize:11, color:'var(--muted)', padding:'8px 18px 4px', letterSpacing:'.04em', textTransform:'uppercase', fontWeight:600 }}>已失效</div>
           {inactive.map(l => renderRow(l, l.expiresAt <= now))}
         </div>
       )}

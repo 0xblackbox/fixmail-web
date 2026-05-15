@@ -460,6 +460,17 @@ input,select,textarea{font-family:inherit;}
   padding:14px 18px;border-bottom:.5px solid var(--line);
   font-size:13px;
 }
+.paste-expire-row{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 14px;border-bottom:.5px solid var(--line);
+  background:var(--surface-2);
+}
+.paste-expire-input{
+  flex:1;height:32px;border:.5px solid var(--line);border-radius:7px;
+  background:var(--surface);outline:none;padding:0 10px;
+  font-size:13px;color:var(--ink);transition:border-color .15s;
+}
+.paste-expire-input:focus{border-color:var(--ink);}
 .saved-links-group{padding:6px 0;}
 .saved-link-row{
   display:flex;align-items:center;gap:12px;
