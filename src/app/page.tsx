@@ -58,12 +58,29 @@ const tagFor = (subject: string): { tag: string; label: string } => {
 const RENEW_MS = 10 * 60 * 1000; // 续期每次加 10 分钟
 
 function AddressCard({
-  local, domain, ttl, ttlMax, onCopy, onCustom, onRefresh, onRenew,
+  local, domain, ttl, ttlMax, onCopy, onSaveCustom, onRefresh, onRenew,
 }: {
   local: string; domain: string; ttl: number; ttlMax: number;
-  onCopy: () => void; onCustom: () => void; onRefresh: () => void; onRenew: () => void;
+  onCopy: () => void; onSaveCustom: (l: string) => void; onRefresh: () => void; onRenew: () => void;
 }) {
-  const urgent = ttl > 0 && ttl < 60_000; // 不足 1 分钟
+  const urgent = ttl > 0 && ttl < 60_000;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const startEdit = () => {
+    setDraft(local.includes('…') ? '' : local);
+    setEditing(true);
+    setTimeout(() => inputRef.current?.focus(), 30);
+  };
+  const cancelEdit = () => setEditing(false);
+  const valid = /^[a-z0-9][a-z0-9._-]{0,31}$/i.test(draft);
+  const confirm = () => {
+    if (!valid) return;
+    onSaveCustom(draft.toLowerCase());
+    setEditing(false);
+  };
+
   return (
     <div className="address-row">
       <div className="address-card">
@@ -74,18 +91,46 @@ function AddressCard({
             <path d="M14 12l4-4h12l4 4 4 14H10z"/>
           </svg>
         </div>
-        <div className="address-meta">
-          <div className="address-label">你的临时邮箱</div>
-          <div className="address-value mono">
-            <span>{local}</span>
-            <span className="at">@</span>
-            <span className="domain">{domain}</span>
-          </div>
+        <div className="address-meta" style={{ flex:1, minWidth:0 }}>
+          <div className="address-label">{editing ? '自定义邮箱地址' : '你的临时邮箱'}</div>
+          {editing ? (
+            <div className="inline-custom">
+              <div className={`inline-custom-input${valid || draft.length === 0 ? '' : ' error'}`}>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={draft}
+                  placeholder="用户名"
+                  onChange={e => setDraft(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
+                  onKeyDown={e => { if (e.key === 'Enter') confirm(); if (e.key === 'Escape') cancelEdit(); }}
+                />
+                <span className="at-sep">@{domain}</span>
+              </div>
+              {draft.length > 0 && !valid && (
+                <span className="inline-custom-hint">字母或数字开头，最短 1 位</span>
+              )}
+            </div>
+          ) : (
+            <div className="address-value mono">
+              <span>{local}</span>
+              <span className="at">@</span>
+              <span className="domain">{domain}</span>
+            </div>
+          )}
         </div>
         <div className="address-actions">
-          <button className="btn" onClick={onCopy}>{Ic.copy}<span>复制</span></button>
-          <button className="btn" onClick={onCustom}>{Ic.edit}<span>自定义</span></button>
-          <button className="btn btn-icon-sq" onClick={onRefresh}>{Ic.refresh}</button>
+          {editing ? (
+            <>
+              <button className="btn btn-primary btn-sm" disabled={!valid} onClick={confirm}>确认</button>
+              <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>取消</button>
+            </>
+          ) : (
+            <>
+              <button className="btn" onClick={onCopy}>{Ic.copy}<span>复制</span></button>
+              <button className="btn" onClick={startEdit}>{Ic.edit}<span>自定义</span></button>
+              <button className="btn btn-icon-sq" onClick={onRefresh}>{Ic.refresh}</button>
+            </>
+          )}
         </div>
       </div>
       <div className="timer-card" style={urgent ? { borderColor:'var(--danger,#e5534b)' } : {}}>
@@ -222,55 +267,6 @@ function Reader({ mail, currentAddress, onDelete, onCopyOtp }: {
   );
 }
 
-// ─── Custom address modal ──────────────────────────────────────────────────
-function CustomModal({ open, onClose, onSave, current, domain }: {
-  open: boolean; onClose: () => void;
-  onSave: (local: string) => void; current: string; domain: string;
-}) {
-  const [local, setLocal] = useState('');
-  const [focus, setFocus] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (open) {
-      setLocal(current.split('@')[0] || '');
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [open, current]);
-
-  if (!open) return null;
-  const valid = /^[a-z0-9][a-z0-9._-]{0,31}$/i.test(local);
-  const status = local.length === 0 ? '' : valid ? 'ok' : 'error';
-  const hint = local.length === 0 ? '支持字母、数字、点、连字符；最短 1 位'
-    : valid ? '✓ 可用 — 此地址将立即生效' : '格式不合法，请以字母或数字开头';
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-head">
-          <h4>自定义邮箱地址</h4>
-          <p>选一个好记的名字。地址绑定到当前会话，可随时切换。</p>
-        </div>
-        <div className="modal-body">
-          <div className={`custom-input${focus ? ' focus' : ''}`}>
-            <input ref={inputRef} type="text" value={local} placeholder="你的用户名"
-              onChange={e => setLocal(e.target.value.toLowerCase())}
-              onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-              onKeyDown={e => { if (e.key === 'Enter' && valid) onSave(local); }} />
-            <span className="at-sep">@</span>
-            <span style={{ fontFamily:'"Geist Mono",monospace',fontSize:13,color:'var(--ink-2)',paddingRight:12,paddingLeft:4 }}>{domain}</span>
-          </div>
-          <div className={`modal-hint ${status}`}>{hint}</div>
-        </div>
-        <div className="modal-foot">
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>取消</button>
-          <button className="btn btn-primary btn-sm" disabled={!valid}
-            style={{ opacity: valid ? 1 : 0.5 }} onClick={() => valid && onSave(local)}>保存地址</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── App ───────────────────────────────────────────────────────────────────
 export default function InboxPage() {
@@ -281,7 +277,6 @@ export default function InboxPage() {
   const [detail, setDetail]     = useState<MsgDetail | null>(null);
   const [search, setSearch]     = useState('');
   const [loading, setLoading]   = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
   const [toasts, setToasts]     = useState<Toast[]>([]);
   const lock = useLock();
 
@@ -429,7 +424,7 @@ export default function InboxPage() {
     setMsgs([]); setSelectedId(null); setDetail(null);
     localStorage.setItem('fm_email', email);
     localStorage.setItem('fm_expire', String(Date.now() + EMAIL_TTL));
-    fetchMsgs(email); setModalOpen(false);
+    fetchMsgs(email);
     pushToast(`地址已设置为 ${email}`);
   }, [fetchMsgs, pushToast]);
 
@@ -441,7 +436,7 @@ export default function InboxPage() {
 
       <div className="address-wrap">
         <AddressCard local={local || '…'} domain={DOMAIN} ttl={ttl} ttlMax={EMAIL_TTL}
-          onCopy={onCopy} onCustom={() => setModalOpen(true)} onRefresh={onRefresh} onRenew={onRenew} />
+          onCopy={onCopy} onSaveCustom={onSaveCustom} onRefresh={onRefresh} onRenew={onRenew} />
       </div>
 
       <div className="mail-wrap">
@@ -453,8 +448,6 @@ export default function InboxPage() {
         </div>
       </div>
 
-      <CustomModal open={modalOpen} onClose={() => setModalOpen(false)}
-        onSave={onSaveCustom} current={address} domain={DOMAIN} />
 
       <div className="toast-wrap">
         {toasts.map(t => (
