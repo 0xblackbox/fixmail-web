@@ -448,7 +448,36 @@ input,select,textarea{font-family:inherit;}
 .batch-copy:hover{background:var(--surface-2);}
 .batch-copy.copied{background:var(--accent);color:#fff;border-color:var(--accent);}
 
-/* ── Modal ───────────────────────────────────────────────── */
+/* ── Saved links panel ───────────────────────────────────── */
+.saved-links-panel{
+  margin-top:16px;
+  background:var(--surface);border:.5px solid var(--line);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);
+  overflow:hidden;
+}
+.saved-links-head{
+  display:flex;align-items:center;gap:10px;
+  padding:14px 18px;border-bottom:.5px solid var(--line);
+  font-size:13px;
+}
+.saved-links-group{padding:6px 0;}
+.saved-link-row{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 18px;border-bottom:.5px solid var(--line);
+  transition: background .12s;
+}
+.saved-link-row:last-child{border-bottom:0;}
+.saved-link-row:hover{background:var(--surface-2);}
+.saved-link-info{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0;}
+.saved-link-email{font-size:13px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.saved-link-meta{font-size:11.5px;color:var(--muted);}
+.saved-link-actions{display:flex;gap:6px;flex-shrink:0;}
+
+@media (max-width:640px){
+  .saved-link-row{flex-direction:column;align-items:flex-start;gap:8px;}
+  .saved-link-actions{width:100%;justify-content:flex-end;}
+}
+
 /* ── Inline custom email editor ─────────────────────────────────────────── */
 .inline-custom{display:flex;flex-direction:column;gap:4px;}
 .inline-custom-input{

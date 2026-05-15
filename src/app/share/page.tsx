@@ -8,7 +8,29 @@ const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'fixmail.org';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface ShareItem { token: string; email: string; url: string; copied: boolean; expired: boolean; }
+interface SavedLink {
+  token: string; email: string; url: string;
+  createdAt: number; expiresAt: number;
+  expiryLabel: string; maxOpens: string;
+  expired: boolean;
+}
 interface Toast { id: string; msg: string; }
+
+const STORAGE_KEY = 'fm_share_links';
+const EXPIRY_MS: Record<string, number> = {
+  '10m': 10*60*1000, '1h': 60*60*1000,
+  '24h': 24*60*60*1000, '7d': 7*24*60*60*1000,
+};
+const EXPIRY_LABEL: Record<string, string> = {
+  '10m':'10 分钟','1h':'1 小时','24h':'24 小时','7d':'7 天',
+};
+
+function loadSaved(): SavedLink[] {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+}
+function persistSaved(links: SavedLink[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(links));
+}
 
 // ─── Mini address banner ────────────────────────────────────────────────────
 function CurrentAddressBanner() {
@@ -38,7 +60,10 @@ function CurrentAddressBanner() {
 }
 
 // ─── Share section ─────────────────────────────────────────────────────────
-function ShareSection({ onToast }: { onToast: (msg: string) => void }) {
+function ShareSection({ onToast, onGenerated }: {
+  onToast: (msg: string) => void;
+  onGenerated: (links: SavedLink[]) => void;
+}) {
   const [expiry, setExpiry]       = useState('24h');
   const [maxOpens, setMaxOpens]   = useState('1');
   const [pw, setPw]               = useState('');
@@ -67,13 +92,24 @@ function ShareSection({ onToast }: { onToast: (msg: string) => void }) {
           }).then(r => r.json())
         )
       );
-      setLinks(results.map(data => ({
-        token: data.token,
-        email: data.email,
+      const now = Date.now();
+      const newItems: ShareItem[] = results.map(data => ({
+        token: data.token, email: data.email,
         url: `${window.location.origin}${data.shareUrl}`,
-        copied: false,
-        expired: false,
-      })));
+        copied: false, expired: false,
+      }));
+      setLinks(newItems);
+      // persist to localStorage
+      const saved: SavedLink[] = newItems.map(item => ({
+        token: item.token, email: item.email, url: item.url,
+        createdAt: now, expiresAt: now + (EXPIRY_MS[expiry] ?? EXPIRY_MS['24h']),
+        expiryLabel: EXPIRY_LABEL[expiry] ?? '24 小时',
+        maxOpens, expired: false,
+      }));
+      const prev = loadSaved().filter(l => !saved.find(s => s.token === l.token));
+      const next = [...saved, ...prev].slice(0, 100);
+      persistSaved(next);
+      onGenerated(next);
       onToast(count === 1 ? '分享链接已生成' : `已生成 ${count} 个分享链接`);
     } catch { onToast('生成失败，请重试'); }
     finally { setLoading(false); }
@@ -293,14 +329,114 @@ function ShareSection({ onToast }: { onToast: (msg: string) => void }) {
   );
 }
 
+// ─── Saved links panel ─────────────────────────────────────────────────────
+function fmtTime(ts: number) {
+  const d = new Date(ts);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function SavedLinksPanel({ links, onExpire, onClear, onToast }: {
+  links: SavedLink[];
+  onExpire: (token: string) => void;
+  onClear: () => void;
+  onToast: (msg: string) => void;
+}) {
+  const now = Date.now();
+  const active = links.filter(l => !l.expired && l.expiresAt > now);
+  const inactive = links.filter(l => l.expired || l.expiresAt <= now);
+
+  if (links.length === 0) return null;
+
+  const copy = (url: string) => {
+    navigator.clipboard?.writeText(url).catch(() => {});
+    onToast('链接已复制');
+  };
+
+  const renderRow = (l: SavedLink, autoExpired: boolean) => {
+    const dead = l.expired || autoExpired;
+    return (
+      <div key={l.token} className="saved-link-row" style={{ opacity: dead ? 0.5 : 1 }}>
+        <div className="saved-link-info">
+          <span className="mono saved-link-email">{l.email}</span>
+          <span className="saved-link-meta">
+            {fmtTime(l.createdAt)} · 有效 {l.expiryLabel} · 最多打开 {l.maxOpens} 次
+          </span>
+        </div>
+        <div className="saved-link-actions">
+          {dead ? (
+            <span style={{ fontSize:11.5, color:'var(--muted)', padding:'0 4px' }}>已失效</span>
+          ) : (
+            <>
+              <button className="btn btn-sm" onClick={() => copy(l.url)}>{Ic.copy}<span>复制链接</span></button>
+              <button
+                className="btn btn-sm"
+                style={{ color:'var(--danger,#e5534b)' }}
+                onClick={() => onExpire(l.token)}
+                title="立即失效"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                </svg>
+                <span>失效</span>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="saved-links-panel">
+      <div className="saved-links-head">
+        <span style={{ fontWeight:600, fontSize:14 }}>我的分享链接</span>
+        <span style={{ fontSize:12, color:'var(--muted)' }}>
+          {active.length} 个有效 · {inactive.length} 个已失效
+        </span>
+        <button className="btn btn-ghost btn-sm" style={{ marginLeft:'auto' }} onClick={onClear}>
+          {Ic.trash}<span>清空记录</span>
+        </button>
+      </div>
+      {active.length > 0 && (
+        <div className="saved-links-group">
+          {active.map(l => renderRow(l, false))}
+        </div>
+      )}
+      {inactive.length > 0 && (
+        <div className="saved-links-group" style={{ marginTop: active.length ? 8 : 0 }}>
+          <div style={{ fontSize:11, color:'var(--muted)', padding:'4px 0 6px', letterSpacing:'.04em', textTransform:'uppercase', fontWeight:600 }}>已失效</div>
+          {inactive.map(l => renderRow(l, l.expiresAt <= now))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function SharePage() {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [savedLinks, setSavedLinks] = useState<SavedLink[]>([]);
+
+  useEffect(() => { setSavedLinks(loadSaved()); }, []);
 
   const pushToast = (msg: string) => {
     const id = Math.random().toString(36).slice(2);
     setToasts(arr => [...arr, { id, msg }]);
     setTimeout(() => setToasts(arr => arr.filter(t => t.id !== id)), 1800);
+  };
+
+  const handleExpire = async (token: string) => {
+    await fetch(`/api/share/${token}`, { method: 'DELETE' }).catch(() => {});
+    const next = savedLinks.map(l => l.token === token ? { ...l, expired: true } : l);
+    setSavedLinks(next);
+    persistSaved(next);
+    pushToast('链接已失效');
+  };
+
+  const handleClear = () => {
+    setSavedLinks([]);
+    persistSaved([]);
+    pushToast('记录已清空');
   };
 
   return (
@@ -318,7 +454,13 @@ export default function SharePage() {
         </div>
 
         <CurrentAddressBanner />
-        <ShareSection onToast={pushToast} />
+        <ShareSection onToast={pushToast} onGenerated={setSavedLinks} />
+        <SavedLinksPanel
+          links={savedLinks}
+          onExpire={handleExpire}
+          onClear={handleClear}
+          onToast={pushToast}
+        />
       </div>
 
       <div className="toast-wrap">
