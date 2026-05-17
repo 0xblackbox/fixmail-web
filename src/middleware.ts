@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuthToken } from '@/lib/auth-token';
 
 const PUBLIC_PATHS = [
   '/login',
@@ -12,7 +13,7 @@ function isPublicSharePage(pathname: string) {
   return /^\/share\/[^/]+/.test(pathname);
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Allow public paths and Next.js internals
@@ -29,7 +30,7 @@ export function middleware(req: NextRequest) {
   if (!sitePassword) return NextResponse.next(); // no password configured
 
   const cookie = req.cookies.get('site_auth')?.value;
-  if (cookie === sitePassword) return NextResponse.next();
+  if (cookie && await verifyAuthToken(cookie, sitePassword)) return NextResponse.next();
 
   // Not authenticated — redirect to login
   const loginUrl = req.nextUrl.clone();

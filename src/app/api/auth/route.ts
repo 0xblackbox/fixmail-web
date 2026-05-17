@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { redis } from '@/lib/redis';
+import { signAuthToken } from '@/lib/auth-token';
 
 const MAX_FAILS   = 10;
 const LOCKOUT_SEC = 15 * 60; // 15 minutes
@@ -30,7 +31,8 @@ export async function POST(req: NextRequest) {
   const from = rawFrom.startsWith('/') && !rawFrom.startsWith('//') ? rawFrom : '/';
   const res = NextResponse.json({ ok: true, redirect: from });
 
-  res.cookies.set('site_auth', sitePassword, {
+  const authToken = await signAuthToken(sitePassword);
+  res.cookies.set('site_auth', authToken, {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',

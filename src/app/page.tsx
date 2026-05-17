@@ -215,7 +215,8 @@ function Reader({ mail, currentAddress, onDelete, onCopyOtp }: {
   mail: MsgDetail | null; currentAddress: string;
   onDelete: (id: string) => void; onCopyOtp: (otp: string) => void;
 }) {
-  const otpMatch = mail ? (mail.subject + ' ' + (mail.text || '')).match(/\b(\d{4,8})\b/) : null;
+  const htmlText = mail?.html ? mail.html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ') : '';
+  const otpMatch = mail ? (mail.subject + ' ' + (mail.text || '') + ' ' + htmlText).match(/\b(\d{4,8})\b/) : null;
   const otp = otpMatch ? otpMatch[1] : null;
 
   if (!mail) {
@@ -386,7 +387,10 @@ export default function InboxPage() {
     } catch {}
   }, [lock]);
 
-  const onDelete = useCallback((id: string) => {
+  const onDelete = useCallback(async (id: string) => {
+    try {
+      await fetch(`/api/inbox/${encodeURIComponent(addrRef.current)}/${id}`, { method: 'DELETE' });
+    } catch {}
     setMsgs(prev => prev.filter(m => m.id !== id));
     if (selectedId === id) { setSelectedId(null); setDetail(null); }
     pushToast('邮件已删除');
