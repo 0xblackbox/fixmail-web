@@ -101,7 +101,12 @@ function AddressCard({
                   type="text"
                   value={draft}
                   placeholder="用户名"
-                  onChange={e => setDraft(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
+                  onChange={e => {
+                    let val = e.target.value.toLowerCase();
+                    const at = val.indexOf('@');
+                    if (at >= 0) val = val.slice(0, at); // 粘贴完整邮箱时自动去掉 @domain
+                    setDraft(val.replace(/[^a-z0-9._-]/g, ''));
+                  }}
                   onKeyDown={e => { if (e.key === 'Enter') confirm(); if (e.key === 'Escape') cancelEdit(); }}
                 />
                 <span className="at-sep">@{domain}</span>
